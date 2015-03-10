@@ -1,0 +1,364 @@
+package com.springmvc.relationdrug.rules.service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
+
+import javax.annotation.Resource;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.springmvc.base.domain.RepeatDrugBox;
+import com.springmvc.base.util.StringUtils;
+import com.springmvc.relationdrug.dao.RepeatDrugLimitDao;
+import com.springmvc.relationdrug.dao.impl.BasicDrugCheckDaoImpl;
+import com.springmvc.relationdrug.dao.impl.SkinTestDaoImpl;
+import com.springmvc.relationdrug.domain.DrugType;
+import com.springmvc.relationdrug.enums.GradeEnum;
+import com.springmvc.relationdrug.enums.RuleTypeEnum;
+import com.springmvc.relationdrug.pojo.PrescribeCell;
+import com.springmvc.relationdrug.pojo.ReportDetail;
+import com.springmvc.relationdrug.service.DrugTypeService;
+
+import edu.emory.mathcs.backport.java.util.Collections;
+
+/**
+ * 重复用药检测
+ */
+@Transactional
+@Service
+public class RepeatDrugService {
+
+	@Resource
+	private RepeatDrugLimitDao repeatDrugLimitDao;
+	@Resource
+	@Autowired
+	private BasicDrugCheckDaoImpl bDaoImpl;
+	@Resource
+	@Autowired
+	private SkinTestDaoImpl sk;
+	@Resource
+	DrugTypeService drugTypeService;
+
+	public RepeatDrugLimitDao getRepeatDrugLimitDao() {
+		return repeatDrugLimitDao;
+	}
+
+	public void setRepeatDrugLimitDao(RepeatDrugLimitDao repeatDrugLimitDao) {
+		this.repeatDrugLimitDao = repeatDrugLimitDao;
+	}
+
+	public BasicDrugCheckDaoImpl getbDaoImpl() {
+		return bDaoImpl;
+	}
+
+	public void setbDaoImpl(BasicDrugCheckDaoImpl bDaoImpl) {
+		this.bDaoImpl = bDaoImpl;
+	}
+
+	public SkinTestDaoImpl getSk() {
+		return sk;
+	}
+
+	public void setSk(SkinTestDaoImpl sk) {
+		this.sk = sk;
+	}
+
+	public List<ReportDetail> check(List<PrescribeCell> cellList) {
+
+		List<ReportDetail> reportList = new ArrayList<ReportDetail>();
+
+		// 首先判断药品数量是否大于1,大于1才会检测重复用药；
+		if (cellList.size() > 1) {
+			// 根据药品code排序
+			Collections.sort(cellList, new Comparator<PrescribeCell>() {
+				public int compare(PrescribeCell paramT1, PrescribeCell paramT2) {
+					return paramT1.getBasicDrugData().getId().compareTo(paramT2.getBasicDrugData().getId());
+				}
+			});
+
+			StringBuilder repeatInfo = cellCheck(cellList);
+
+			
+			// repeatInfo不为空时，记录检测结果
+			if (repeatInfo.length() != 0) {
+				ReportDetail report = new ReportDetail(
+						RuleTypeEnum.repeatDrugChecker);
+				report.setGrade(GradeEnum.CAUTION);
+				report.setRemark(repeatInfo.toString());
+				reportList.add(report);
+				return reportList;
+			} else {
+				ReportDetail report = new ReportDetail(
+						RuleTypeEnum.repeatDrugChecker);
+				report.setGrade(GradeEnum.WARN);
+				report.setRemark("无");
+				reportList.add(report);
+				return reportList;
+			}
+		} else {
+			return null;
+		}
+	}
+
+	/**
+	 * 
+	* @Title: cellCheck 
+	* @Description: 按第3个药品类型对药品进行检测
+	* @param @param cellList
+	* @param @return    设定文件 
+	* @return StringBuilder    返回类型 
+	* @throws 
+	* @author HuZongjian
+	* @date 2015-2-5 下午1:53:40
+	 */
+	
+	private StringBuilder cellCheck(List<PrescribeCell> cellList) {
+		// TODO Auto-generated method stub
+		StringBuilder repeatInfo = new StringBuilder();
+		List<Long> drugids =new ArrayList<Long>();
+		for(PrescribeCell p: cellList){
+			drugids.add(p.getBasicDrugData().getId());
+		}
+		List<DrugType> t =drugTypeService.findBydrugids(drugids);
+		//修改cellList字段的drugtype类型，如果查询出多个类型以最后遍历到的类型为主
+		//这是一个需求bug
+		for(DrugType d: t){
+			//如果该级的类型为空，刚往上一级检测
+		for(PrescribeCell p: cellList){
+				if(d.getBasicDrugData().getId()==p.getBasicDrugData().getId()){
+					if(!StringUtils.isNullOrBlank(d.getClassifyFive().trim())){
+						p.setDrugType(d.getClassifyFive().replaceAll("\\d", "").replaceAll("\\.", ""));
+					}else
+					if(!StringUtils.isNullOrBlank(d.getClassifyFour().trim())){
+						p.setDrugType(d.getClassifyFour().replaceAll("\\d", "").replaceAll("\\.", ""));
+					}else
+					if(!StringUtils.isNullOrBlank(d.getClassifyThree().trim())){
+						p.setDrugType(d.getClassifyThree().replaceAll("\\d", "").replaceAll("\\.", ""));
+					}else if(!StringUtils.isNullOrBlank(d.getClassifyTwo().trim())){
+						p.setDrugType(d.getClassifyTwo().replaceAll("\\d", "").replaceAll("\\.", ""));
+					}
+					if(!StringUtils.isNullOrBlank(d.getClassifyOne().trim())){
+						p.setDrugType(d.getClassifyOne().replaceAll("\\d", "").replaceAll("\\.", ""));
+					}
+				}
+			}
+		}
+		//复制2个对象数组
+		List<PrescribeCell> x1 = new ArrayList<PrescribeCell>();
+		List<PrescribeCell> y1 = new ArrayList<PrescribeCell>();
+		x1.addAll(cellList);
+		y1.addAll(cellList);
+		//去掉同drugtype只有一个药品
+		List<PrescribeCell> dttype =getRepeatDrugType(x1);
+		//去掉drugid只有一个药品
+		List<PrescribeCell> dtId =getRepeatByDrugId(y1);
+		if(dttype.size()>=1){
+			//把药品类型相同的药品合并到一起
+			List<RepeatDrugBox> rdtype =mergerdrugName(dttype, "1");
+			if(dtId.size()>=2){
+				//把药品id相同的药品合并到一起
+				List<RepeatDrugBox> rdid =mergerdrugName(dtId, "0");
+				//整理显示结果
+				repeatInfo =mergerdrug(rdtype,rdid);
+			}else{
+				//整理显示结果
+				for(RepeatDrugBox x:rdtype){
+					StringBuilder sb = new StringBuilder();
+					sb.append("【")
+					.append(x.getDrugNames()).append("】");
+					sb.append("属于" + x.getDrugType());
+					repeatInfo.append(sb.toString()).append(";");
+				}	
+			}
+			
+			
+		}else if(dtId.size()>=2){
+			List<RepeatDrugBox> rdtype =mergerdrugName(dttype, "1");
+			//把药品id相同的药品合并到一起
+			List<RepeatDrugBox> rdid =mergerdrugName(dtId, "0");
+			//整理显示结果
+			repeatInfo =mergerdrug(rdtype,rdid);
+		}{
+			
+		}	
+		return repeatInfo;
+	}
+	
+	public StringBuilder  mergerdrug(List<RepeatDrugBox> rdtype,List<RepeatDrugBox> rdid){
+		StringBuilder repeatInfo =new StringBuilder();
+		//把名字相同，但是第3类型为空的组合添加到rdtype;
+		for(RepeatDrugBox x2:rdid){
+			boolean flag =true;
+			for(RepeatDrugBox x:rdtype){
+				if(x.getDrugIds().equals(x2.getDrugIds())){
+					x.setDrugType("同一个药品");
+					flag = false;
+				}
+			}
+			if(flag){
+				rdtype.add(x2);
+			}
+			
+		}
+		//以rdtype为最完整的检测结果组合与同一药品的组合做对比，如果相同，刚把提示改成提示是同一种药
+		for(RepeatDrugBox x:rdtype){
+			for(RepeatDrugBox x2:rdid){
+				if(x.getDrugIds().equals(x2.getDrugIds())){
+					x.setDrugType("同一个药品");
+				}
+			}
+			StringBuilder sb = new StringBuilder();
+			sb.append("【")
+			.append(x.getDrugNames()).append("】");
+			sb.append("属于" + x.getDrugType());
+			repeatInfo.append(sb.toString()).append(";\n");
+		}
+		return repeatInfo;
+				
+	}
+	
+	
+	/**
+	 * 
+	* @Title: mergerdrugName 
+	* @Description: 合并药品名称
+	* @param @param disdetail
+	* @param @param status
+	* @param @return    设定文件 
+	* @return List<RepeatDrugBox>    返回类型 
+	* @throws 
+	* @author HuZongjian
+	* @date 2015-2-5 上午10:15:55
+	 */
+	public static List<RepeatDrugBox> mergerdrugName(
+			List<PrescribeCell> disdetail,String status) {
+		List<RepeatDrugBox> boxList = new ArrayList<RepeatDrugBox>();
+		//1代表drutype其它代表 id;
+		boolean flag = false;
+		for (PrescribeCell sta : disdetail) {
+			flag = false;
+			for (RepeatDrugBox n : boxList) {
+				if (status.equals("1")?n.getDrugType().equals(sta.getDrugType()):n.getDrugIds().equals(sta.getBasicDrugData().getId().toString())) {
+					if (n.getDrugNames() == null) {
+						n.setDrugNames(sta.getDrugName());
+					} else {
+						n.setDrugNames(n.getDrugNames() + "、" + sta.getDrugName());
+					}
+					flag = true;
+					break;
+				}
+			}
+			if (!flag) {
+				RepeatDrugBox  x=new RepeatDrugBox();
+				x.setDrugNames(sta.getDrugName());
+				x.setDrugType(sta.getDrugType());
+				x.setDrugIds(sta.getBasicDrugData().getId().toString());
+				boxList.add(x);
+			}
+
+		}
+		return boxList;
+	}
+	
+	/**
+	 * 
+	* @Title: getRepeatByDrugId 
+	* @Description: 排除药品id不相同的药品
+	* @param @param cellList
+	* @param @return    设定文件 
+	* @return List<PrescribeCell>    返回类型 
+	* @throws 
+	* @author HuZongjian
+	* @date 2015-2-5 上午10:04:21
+	 */
+	private List<PrescribeCell> getRepeatByDrugId(List<PrescribeCell> cellList) {
+		for (int i = cellList.size()-1; i >=0; i--) {
+			Long value = (Long) cellList.get(i).getBasicDrugData().getId();
+			int count = 0;
+			for (int j = 0; j < cellList.size(); j++) {
+				if (value==cellList.get(j).getBasicDrugData().getId()) {
+					count++;
+				}
+			}
+			if (count <= 1) {
+				cellList.remove(i);
+			}
+			count = 0;
+		}
+		return cellList;
+	}
+	
+/**
+ * 
+* @Title: getRepeatDrugType 
+* @Description: 排除drugType没有相同的药品
+* @param @param cellList
+* @param @return    设定文件 
+* @return List<PrescribeCell>    返回类型 
+* @throws 
+* @author HuZongjian
+* @date 2015-2-5 上午10:03:24
+ */
+
+	private List<PrescribeCell> getRepeatDrugType(List<PrescribeCell> cellList) {
+		for (int i = cellList.size()-1; i >=0; i--) {
+			String value = (String) cellList.get(i).getDrugType();
+			int count = 0;
+			if(!StringUtils.isNullOrBlank(value)){
+				for (int j = 0; j < cellList.size(); j++) {
+					if (value.equals(cellList.get(j).getDrugType())) {
+						
+						count++;
+					}
+			}
+			}
+			if (count <= 1) {
+				cellList.remove(i);
+			}
+			count = 0;
+		}
+		return cellList;
+	}
+
+	/**
+	 * 
+	 * @Title: array_unique
+	 * @Description: TODO(这里用一句话描述这个方法的作用)
+	 * @param @param a
+	 * @param @return 设定文件
+	 * @return String[] 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2015-2-5 上午9:00:50
+	 */
+
+	public static String[] array_unique(String[] a) {
+		// array_unique
+		List<String> list = new LinkedList<String>();
+		for (int i = 0; i < a.length; i++) {
+			if (!list.contains(a[i])) {
+				list.add(a[i]);
+
+			}
+		}
+		for (int j = 0; j < list.size(); j++) {
+			String y = list.get(j).substring(1, list.get(j).length() - 1);
+			for (int k = j + 1; k < list.size(); k++) {
+				if (list.get(k).contains(y)) {
+					list.remove(j);
+				}
+			}
+		}
+
+		return (String[]) list.toArray(new String[list.size()]);
+	}
+
+	
+
+	
+
+}

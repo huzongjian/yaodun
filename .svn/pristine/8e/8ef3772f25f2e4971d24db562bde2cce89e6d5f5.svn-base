@@ -1,0 +1,11 @@
+DayNum4UseChecker =off
+DrugForbidDiseaseChecker =off
+DrugSuitDiseaseChecker=off
+FrequencyChecker=off
+DosageChecker=off
+MultiDrugsMathupChecker=off
+RepeatDrugChecker=off
+SpecialGroupsChecker=off
+SpecialCrowdChecker=on
+SkinTestOrNotChecker=off
+UsageChecker=off
