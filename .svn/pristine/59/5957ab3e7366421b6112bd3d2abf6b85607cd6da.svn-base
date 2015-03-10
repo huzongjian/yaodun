@@ -1,0 +1,1003 @@
+package com.springmvc.web.controller;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.math.BigDecimal;
+import java.net.URLDecoder;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.annotation.Resource;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.xml.rpc.ServiceException;
+
+import net.sf.json.JSONArray;
+import net.sf.json.JSONObject;
+
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+import antlr.RecognitionException;
+import antlr.TokenStreamException;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.sdicons.json.mapper.MapperException;
+import com.springmvc.base.util.CollectionUtils;
+import com.springmvc.base.util.DateUtils;
+import com.springmvc.base.util.EntityToJson;
+import com.springmvc.base.util.StringManager;
+import com.springmvc.base.util.StringUtils;
+import com.springmvc.relationdrug.domain.BasicDrugCheck;
+import com.springmvc.relationdrug.domain.BasicDrugRelationship;
+import com.springmvc.relationdrug.domain.Frequency;
+import com.springmvc.relationdrug.domain.Otherinfo;
+import com.springmvc.relationdrug.domain.Usage;
+import com.springmvc.relationdrug.domain.User;
+import com.springmvc.relationdrug.enums.AdviceTypeEnum;
+import com.springmvc.relationdrug.exception.CheckException;
+import com.springmvc.relationdrug.pojo.PatientInfo;
+import com.springmvc.relationdrug.pojo.PatientInfo.CureTypeEnum;
+import com.springmvc.relationdrug.pojo.PatientInfo.GenderEnum;
+import com.springmvc.relationdrug.pojo.PrescribeBasicInfo;
+import com.springmvc.relationdrug.pojo.PrescribeBasicInfo.TitleEnum;
+import com.springmvc.relationdrug.pojo.PrescribeCell;
+import com.springmvc.relationdrug.pojo.ReportDetail;
+import com.springmvc.relationdrug.pojo.VerifyReport;
+import com.springmvc.relationdrug.rules.service.OtherInfoService;
+import com.springmvc.relationdrug.service.OwnDoctorService;
+import com.springmvc.relationdrug.service.UserService;
+import com.springmvc.relationdrug.service.impl.BasicDrugCheckService;
+import com.springmvc.relationdrug.service.impl.BasicDrugRelationshipService;
+import com.springmvc.relationdrug.service.impl.FrequencyService;
+import com.springmvc.relationdrug.service.impl.PrescriptionVerifier;
+import com.springmvc.relationdrug.service.impl.UsageService;
+
+/**
+ * 
+ * @ClassName: DrugBasicCheckController x
+ * @Description: TODO(这里用一句话描述这个类的作用)
+ * @author HuZongJian
+ * @date 2014-7-8 下午3:19:36
+ * 
+ */
+@Controller
+@RequestMapping("DrugBasicCheck")
+public class DrugBasicCheckController {
+	@Resource
+	private PrescriptionVerifier prescriptionVerifier;
+	@Resource
+	private BasicDrugCheckService basicDrugCheckService;
+	@Resource
+	private UsageService usageService;
+	@Resource
+	private FrequencyService frequencyService;
+	@Resource
+	private OtherInfoService otherInfoService;
+	@Resource
+	private BasicDrugRelationshipService bRelationshipService;
+	@Resource
+	private UserService userService;
+	@Resource
+	private OwnDoctorService ownDoctorService;
+
+	/**
+	 * 
+	 * @Title: SearchFrequency
+	 * @Description: TODO(这里用一句话描述这个方法的作用)
+	 * @param @param matchInfo
+	 * @param @param request
+	 * @param @param response
+	 * @param @throws IOException
+	 * @param @throws ServiceException 设定文件
+	 * @return void 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2014-7-8 下午4:28:39
+	 */
+
+	@RequestMapping("searchFrequency/{matchInfo}")
+	@ResponseBody
+	private void SearchFrequency(@PathVariable String matchInfo,
+			HttpServletRequest request, HttpServletResponse response)
+			throws IOException, ServiceException {
+		List<Frequency> listFrequency = frequencyService
+				.findByNameAndSymbol(matchInfo);
+		JsonArray array = new JsonArray();
+
+		for (Frequency f : listFrequency) {
+			JsonObject obj = new JsonObject();
+			obj.addProperty("id", f.getFrequencyId());
+			obj.addProperty("name", f.getName());
+			obj.addProperty("symbol", f.getSymbol());
+			array.add(obj);
+		}
+
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		out.print(array);
+
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "/searchFrequency")
+	@ResponseBody
+	private void SearchFrequency(HttpServletRequest request,
+			HttpServletResponse response) throws IOException {
+		JSONObject outobj = new JSONObject();
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		try {
+			List<Frequency> listFrequency = frequencyService.findAll();
+			JSONArray array = new JSONArray();
+			for (Frequency f : listFrequency) {
+				JSONObject obj = new JSONObject();
+				obj.put("id", f.getFrequencyId());
+				obj.put("name", f.getName());
+				obj.put("symbol", f.getSymbol());
+				array.add(obj);
+			}
+
+			outobj.put("code", "1000");
+			outobj.put("msg", "success");
+			outobj.put("data", array);
+
+		} catch (Exception e) {
+			outobj.put("code", "1001");
+			outobj.put("msg", "查询失败");
+			outobj.put("data", "");
+		}
+
+		out.print(outobj);
+	}
+
+	/**
+	 * 
+	 * @Title: SearchDrug
+	 * @Description: TODO(这里用一句话描述这个方法的作用)
+	 * @param @param matchInfo
+	 * @param @param request
+	 * @param @param response
+	 * @param @throws IOException
+	 * @param @throws ServiceException 设定文件
+	 * @return void 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2014-7-8 下午4:28:48
+	 */
+
+	@RequestMapping(value = "searchDrug/{matchInfo}")
+	@ResponseBody
+	private void SearchDrug(@PathVariable String matchInfo,
+			HttpServletRequest request, HttpServletResponse response)
+			throws IOException, ServiceException {
+		List<BasicDrugRelationship> listbasicDrugCheck = bRelationshipService
+				.findByNameAndSymbol(matchInfo);
+		JsonArray array = new JsonArray();
+
+		for (BasicDrugRelationship basic : listbasicDrugCheck) {
+			JsonObject obj = new JsonObject();
+			obj.addProperty("id", basic.getBasicDrugRelationShipId());
+			obj.addProperty("drugname", basic.getCommodityName());
+			obj.addProperty("productName", basic.getProductName());
+			if (basic.getBasicDrugCheck() != null) {
+				obj.addProperty("basicid", basic.getBasicDrugCheck()
+						.getBasicDrugCheckId());
+				obj.addProperty("unit", basic.getBasicDrugCheck().getRuleUnit());
+			} else {
+				obj.addProperty("basicid", "");
+				obj.addProperty("unit", "");
+			}
+			array.add(obj);
+		}
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		out.print(array);
+
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "/searchDrug")
+	@ResponseBody
+	private void SearchDruginterface(HttpServletRequest request,
+			HttpServletResponse response) throws IOException, ServiceException {
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		JSONObject outobj = new JSONObject();
+		try {
+			// 使用原始的输入流手动解析传入参数。
+			BufferedReader in = new BufferedReader(new InputStreamReader(
+					request.getInputStream(), "UTF-8"));
+			JSONObject x = JSONObject.fromObject(in.readLine());
+			// 解析用户基本信息
+			String drugName = x.getString("drugName");
+			List<BasicDrugRelationship> listbasicDrugCheck = bRelationshipService
+					.findByNameAndSymbol(drugName);
+			JSONArray array = new JSONArray();
+			for (BasicDrugRelationship basic : listbasicDrugCheck) {
+				JSONObject obj = new JSONObject();
+				obj.put("id", basic.getBasicDrugRelationShipId());
+				obj.put("drugname", basic.getCommodityName());
+				obj.put("productName", basic.getProductName());
+				if (basic.getBasicDrugCheck() != null) {
+					obj.put("basicId", basic.getBasicDrugCheck()
+							.getBasicDrugCheckId());
+					obj.put("unit", basic.getBasicDrugCheck().getRuleUnit());
+				} else {
+					obj.put("basicId", "");
+					obj.put("unit", "");
+				}
+				array.add(obj);
+			}
+			outobj.put("code", "1000");
+			outobj.put("msg", "success");
+			outobj.put("data", array);
+
+		} catch (Exception e) {
+			outobj.put("code", "1001");
+			outobj.put("msg", "查询失败");
+			outobj.put("data", "");
+		}
+
+		out.print(outobj);
+
+	}
+
+	/**
+	 * 
+	 * @Title: SearchOtherInfo
+	 * @Description: 查询其它信息
+	 * @param @param matchInfo
+	 * @param @param request
+	 * @param @param response
+	 * @param @throws IOException
+	 * @param @throws ServiceException 设定文件
+	 * @return void 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2014-10-28 上午11:14:05
+	 */
+	@RequestMapping("searchOtherInfo/{matchInfo}")
+	@ResponseBody
+	private void SearchOtherInfo(@PathVariable Integer matchInfo,
+			HttpServletRequest request, HttpServletResponse response)
+			throws IOException, ServiceException {
+		List<Otherinfo> otherinfo = otherInfoService.findbytype(matchInfo);
+		JSONArray array = new JSONArray();
+		for (Otherinfo l : otherinfo) {
+			JSONObject obj = new JSONObject();
+			EntityToJson.entityToJSON(l, obj);
+			array.add(obj);
+		}
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		out.print(array);
+
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "/searchOtherInfo")
+	@ResponseBody
+	private void SearchOtherInfoInterface(HttpServletRequest request,
+			HttpServletResponse response) throws IOException, ServiceException {
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		JSONObject outobj = new JSONObject();
+		try {
+
+			// 使用原始的输入流手动解析传入参数。
+			BufferedReader in = new BufferedReader(new InputStreamReader(
+					request.getInputStream(), "UTF-8"));
+			JSONObject x = JSONObject.fromObject(in.readLine());
+			// 解析用户基本信息
+			Integer otherInfo = x.getInt("otherInfo");
+			List<Otherinfo> otherinfo = otherInfoService.findbytype(otherInfo);
+			JSONArray array = new JSONArray();
+			for (Otherinfo l : otherinfo) {
+				JSONObject obj = new JSONObject();
+				EntityToJson.entityToJSON(l, obj);
+				array.add(obj);
+			}
+			outobj.put("code", "1000");
+			outobj.put("msg", "success");
+			outobj.put("data", array);
+
+		} catch (Exception e) {
+			outobj.put("code", "1001");
+			outobj.put("msg", "查询失败");
+			outobj.put("data", e.getMessage());
+		}
+
+		out.print(outobj);
+
+	}
+
+	/**
+	 * 
+	 * @Title: SearchUsage
+	 * @Description: TODO(这里用一句话描述这个方法的作用)
+	 * @param @param matchInfo
+	 * @param @param request
+	 * @param @param response
+	 * @param @throws IOException
+	 * @param @throws ServiceException 设定文件
+	 * @return void 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2014-7-8 下午4:28:55
+	 */
+	@RequestMapping("searchUsage/{matchInfo}")
+	@ResponseBody
+	private void SearchUsage(@PathVariable String matchInfo,
+			HttpServletRequest request, HttpServletResponse response)
+			throws IOException, ServiceException {
+		List<Usage> listUsage = usageService.findByNameAndSymbol(matchInfo);
+		JsonArray array = new JsonArray();
+
+		for (Usage u : listUsage) {
+			JsonObject obj = new JsonObject();
+			obj.addProperty("id", u.getUsageId());
+			obj.addProperty("name", u.getName());
+			obj.addProperty("symbol", u.getSymbol());
+			array.add(obj);
+		}
+
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		out.print(array);
+
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "/searchUsage")
+	@ResponseBody
+	private void SearchUsageInterface(HttpServletRequest request,
+			HttpServletResponse response) throws IOException, ServiceException {
+		JSONObject outobj = new JSONObject();
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		try {
+			List<Usage> listUsage = usageService.findAll();
+			JSONArray array = new JSONArray();
+			for (Usage u : listUsage) {
+				JSONObject obj = new JSONObject();
+				obj.put("id", u.getUsageId());
+				obj.put("name", u.getName());
+				obj.put("symbol", u.getSymbol());
+				array.add(obj);
+			}
+			outobj.put("code", "1000");
+			outobj.put("msg", "success");
+			outobj.put("data", array);
+
+		} catch (Exception e) {
+			outobj.put("code", "1001");
+			outobj.put("msg", "查询失败");
+			outobj.put("data", "");
+		}
+
+		out.print(outobj);
+
+	}
+
+	private static boolean isNum(String str) {
+		try {
+
+			new BigDecimal(str);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * 
+	 * @Title: drugCheckinterface
+	 * @Description: TODO(这里用一句话描述这个方法的作用)
+	 * @param @param request
+	 * @param @param response
+	 * @param @throws IOException
+	 * @param @throws TokenStreamException
+	 * @param @throws RecognitionException
+	 * @param @throws MapperException
+	 * @param @throws CheckException 设定文件
+	 * @return void 返回类型
+	 * @throws
+	 * @author HuZongjian
+	 * @date 2014-10-24 上午9:52:24 参数格式如下： {
+	 *       "baseInfo":{"male":0,"age":"0","height"
+	 *       :"","weight":"","isLiver":"0","kidney":"0"},
+	 *       "drugInfo":[{"drugname"
+	 *       :"1_注射用普鲁卡因青霉素","usage":"","dosage":"","frequery":""},
+	 *       {"drugname":"1_注射用普鲁卡因青霉素","usage":"","dosage":"","frequery":""} ]
+	 *       }
+	 * 
+	 */
+	@RequestMapping(method = RequestMethod.POST, value = "/drugCheckinterface")
+	@ResponseBody
+	public void drugCheckinterface(HttpServletRequest request,
+			HttpServletResponse response) throws IOException,
+			TokenStreamException, RecognitionException, MapperException,
+			CheckException {
+
+		JSONObject outobj = new JSONObject();
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=utf-8");
+		out = response.getWriter();
+		try {
+
+			// 使用原始的输入流手动解析传入参数。
+			
+			BufferedReader in = new BufferedReader(new InputStreamReader(request.getInputStream(),"gb2312"));
+			JSONObject x = JSONObject.fromObject(in.readLine());
+			// 解析用户基本信息
+			
+			JSONObject baseobject =JSONObject.fromObject(x.getString("baseInfo"));
+			String checktype = baseobject.getString("checkType");
+
+			PatientInfo patientInfo = new PatientInfo();
+			DateUtils.now();
+			if (baseobject.getString("age").equals("1")) {
+				// 少于16岁的儿童年龄从14岁转化成出生年月
+				patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+						-14 * 12));
+			} else if (baseobject.getString("age").equals("2")
+					|| baseobject.getString("age").equals("0")) {
+				// 成人按25岁转化成出生年月
+				patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+						-25 * 12));
+			} else if (baseobject.getString("age").equals("3")) {
+				// 老人按52岁转化成出生年月
+				patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+						-52 * 12));
+
+			}
+			patientInfo.setCureType(CureTypeEnum.OUT_PATIENT);
+			if (baseobject.getString("gender").equals("1")) {
+				patientInfo.setGender(GenderEnum.MALE);
+			} else {
+				patientInfo.setGender(GenderEnum.FEMALE);
+				patientInfo.setGestateTime(0);
+			}
+			patientInfo.setName("某某");
+			patientInfo.setSerialNo("12345");
+			if (isNum(baseobject.getString("weight"))) {
+				patientInfo.setWeight(Integer.parseInt(baseobject
+						.getString("weight")));
+			}
+			if (isNum(baseobject.getString("height"))) {
+				patientInfo.setHeight(Integer.parseInt(baseobject
+						.getString("height")));
+			}
+			if (baseobject.getString("isLiver").equals("0")) {
+				patientInfo.setLiver(false);
+			} else if (baseobject.getString("isLiver").equals("1")) {
+				patientInfo.setLiver(true);
+			} else if (baseobject.getString("isLiver").equals("2")) {
+				patientInfo.setCliver(true);
+			}
+			String gfr =baseobject.getString("kidney");
+					if(StringUtils.isNullOrBlank(gfr)){
+						patientInfo.setGfr(0);
+					}
+					else{
+						patientInfo.setGfr(Long.parseLong(gfr));
+					}
+			
+			
+			//妊娠期
+		 String	isGestate= baseobject.getString("isGestate");
+		//妊娠期时间
+		 String gestateTime =baseobject.getString("gestateTime");
+		 if(isGestate.equals("1")){
+			 patientInfo.setGestate(true);
+			 //如果选了妊娠期就把年龄设成为成年人
+			 patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+						-25 * 12));
+			 if(!StringUtils.isNullOrBlank(gestateTime))
+			 patientInfo.setGestateTime(Long.parseLong(gestateTime));
+		 }
+		 String	isSuckling= baseobject.getString("isSuckling");
+		 
+		//哺乳期
+		 if(isSuckling.equals("1")){
+			 patientInfo.setSuckling(true);
+		 }	
+			
+			
+			// 解析药品信息
+			JSONArray jsonarray = x.getJSONArray("drugInfo");
+			List<PrescribeCell> cellList = new ArrayList<PrescribeCell>();
+			for (int i = 0; i < jsonarray.size(); i++) {
+				JSONObject jsonobject = (JSONObject) jsonarray.get(i);
+				PrescribeCell cell = new PrescribeCell();
+
+				cell.setGroupNo(1);
+				// 药品的id为空应该去数据查询药品是否存在
+				String basicId = jsonobject.getString("basicId");
+				BasicDrugCheck a = this.basicDrugCheckService.get(Long
+						.parseLong(basicId));
+				cell.setBasicDrugCheck(a);
+				String basicName = jsonobject.getString("drugname");
+				
+				
+				cell.setDrugName(URLDecoder.decode(basicName,"utf-8"));
+
+				cell.setAdviceType(AdviceTypeEnum.TEMP_ADVICE);
+				// 用法如果为空应该去数据查询用法是否存在
+				String usage = jsonobject.getString("usage");
+				if (isNum(usage)) {
+					Usage u = this.usageService.get(Long.parseLong(usage));
+					cell.setUsage(u);
+				} else {
+					if (usage.equals("")) {
+						cell.setUsage(null);
+					} else {
+						Usage u = this.usageService.findByName(usage);
+						if (u != null) {
+							cell.setUsage(u);
+						} else {
+							cell.setUsage(null);
+						}
+					}
+				}
+				cell.setDaynum(null); // 天数
+				String frequery = jsonobject.getString("frequery");
+				// 频次
+				if (isNum(frequery)) {
+					Frequency f = this.frequencyService.get(Long
+							.parseLong(frequery));
+					cell.setFrequency(f);
+				} else {
+					if (frequery.equals("")) {
+						cell.setFrequency(null);
+					} else {
+						Frequency f = this.frequencyService
+								.findByName(frequery);
+						if (f != null) {
+							cell.setFrequency(f);
+						} else {
+							cell.setFrequency(null);
+						}
+					}
+				}
+				// 如果用量与单位为手工输入则把单位分出来
+				String dosage = jsonobject.getString("dosage");
+				if (!StringUtils.isNullOrBlank(dosage)) {
+					if (isNum(dosage)) {
+						cell.setDosage(Double.parseDouble(dosage));
+					} else {
+						String unit = splitNotNumber(dosage);
+						String d = dosage.replace(unit, "");
+						if (isNum(d)) {
+							cell.setDosage(Double.parseDouble(d));
+							cell.setUnit(unit);
+						} else {
+							cell.setDosage(0);
+						}
+
+					}
+				} else {
+					cell.setDosage(0);
+				}
+				// 添加
+				cellList.add(cell);
+			}
+
+			PrescribeBasicInfo pBasicInfo = new PrescribeBasicInfo();
+			pBasicInfo.setCreateTime(DateUtils.now());
+			pBasicInfo.setDiseaseCode("A01.101");
+			pBasicInfo.setDiseaseName("流行性感冒");
+			pBasicInfo.setDivisionCode("dept-2046");
+			pBasicInfo.setDivisionName("外科");
+			pBasicInfo.setMedicalerName("某医生");
+			pBasicInfo.setMedicalerNo("m-3721");
+			pBasicInfo.setMedicalerTitle(TitleEnum.MainMedicaler);
+			pBasicInfo.setPrescribeNo("1314");
+			pBasicInfo.setTotalAmount(BigDecimal.valueOf(999.98));
+			JSONArray array = new JSONArray();
+			VerifyReport v = prescriptionVerifier.verify(patientInfo,
+					pBasicInfo, cellList, "");
+			if (v != null) {
+				if (CollectionUtils.isNotEmpty(v.getOriginReport())) {
+					List<ReportDetail> l = v.getOriginReport();
+					List<ReportDetail> l2 = getUniqueSymptom(l);
+					for (ReportDetail report : l2) {
+						JSONObject obj = new JSONObject();
+						//if (!StringUtils.isNullOrBlank(checktype)) {
+							obj.put("type", report.getRuleType().getText()
+									+ "：");
+							obj.put("grade", report.getGrade().getText());
+							obj.put("result", report.getRemark());
+							array.add(obj);
+							/*}else {
+							if (report.getRuleType().getValue() == Integer
+									.parseInt(checktype)
+									|| report.getRuleType().getValue() == 100) {
+								obj.put("type", report.getRuleType().getText()
+										+ "：");
+								obj.put("grade", report.getGrade().getText());
+								obj.put("result", report.getRemark());
+								array.add(obj);
+							}
+						}*/
+
+					}
+				} else {
+					JSONObject obj = new JSONObject();
+					obj.put("type", "");
+					obj.put("grade", "提示");
+					obj.put("result", "未发现配伍禁忌和重复用药!");
+					array.add(obj);
+				}
+			}
+			outobj.put("code", "1000");
+			outobj.put("msg", "success");
+			outobj.put("data", array);
+	//System.err.println(outobj.toString());
+
+		} catch (Exception e) {
+			outobj.put("code", "1001");
+			outobj.put("msg", "检测失败");
+			outobj.put("data", e.getMessage());
+		}
+		out.print(outobj);
+	}
+
+	public static List<ReportDetail> getUniqueSymptom(
+			List<ReportDetail> disdetail) {
+		List<ReportDetail> boxList = new ArrayList<ReportDetail>();
+		boolean flag = false;
+		String detailid = "";
+		for (ReportDetail sta : disdetail) {
+			flag = false;
+			detailid = "" + sta.getRemark();
+			for (ReportDetail n : boxList) {
+				if (n.equals(sta)) {
+					if (n.getRuleType() == null) {
+						n.setRemark(n.getRemark() + sta.getRemark() + ";");
+					} else {
+						n.setRemark(n.getRemark() + ";" + sta.getRemark());
+					}
+					flag = true;
+					break;
+				}
+			}
+			if (!flag) {
+				sta.setRemark(detailid);
+				boxList.add(sta);
+			}
+
+		}
+		return boxList;
+	}
+
+	@RequestMapping(method = RequestMethod.POST, value = "drugCheck")
+	@ResponseBody
+	public void drugCheck(HttpServletRequest request,
+			HttpServletResponse response) throws IOException,
+			TokenStreamException, RecognitionException, MapperException,
+			CheckException {
+
+		String[] jsonArr = request.getParameterValues("datas[]");
+		List<PrescribeCell> cellList = new ArrayList<PrescribeCell>();
+		JSONArray jsonarray = JSONArray.fromObject(jsonArr);
+		// 把jsonarray转成jsonobject
+		JSONObject baseobject = (JSONObject) jsonarray.get(0);
+		PatientInfo patientInfo = new PatientInfo();
+		DateUtils.now();
+
+		if (baseobject.getString("age").equals("1")) {
+			// 少于16岁的儿童年龄从14岁转化成出生年月
+			patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+					-14 * 12));
+		} else if (baseobject.getString("age").equals("2")
+				|| baseobject.getString("age").equals("0")) {
+			// 成人按25岁转化成出生年月
+			patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+					-25 * 12));
+		} else if (baseobject.getString("age").equals("3")) {
+			// 老人按52岁转化成出生年月
+			patientInfo.setBirthday(DateUtils.nextMonths(DateUtils.now(),
+					-52 * 12));
+
+		}
+		patientInfo.setCureType(CureTypeEnum.OUT_PATIENT);
+		if (baseobject.getString("male").equals("1")) {
+			patientInfo.setGender(GenderEnum.MALE);
+		} else {
+			patientInfo.setGender(GenderEnum.FEMALE);
+			patientInfo.setGestateTime(0);
+		}
+		patientInfo.setName("某某");
+		patientInfo.setSerialNo("12345");
+		if (isNum(baseobject.getString("weight"))) {
+			patientInfo.setWeight(Integer.parseInt(baseobject
+					.getString("weight")));
+		}
+		if (isNum(baseobject.getString("height"))) {
+			patientInfo.setHeight(Integer.parseInt(baseobject
+					.getString("height")));
+		}
+		if (baseobject.getString("isLiver").equals("0")) {
+			patientInfo.setLiver(false);
+		} else if (baseobject.getString("isLiver").equals("1")) {
+			patientInfo.setLiver(true);
+		} else if (baseobject.getString("isLiver").equals("2")) {
+			patientInfo.setCliver(true);
+		}
+		patientInfo.setGfr(Long.parseLong(baseobject.getString("gfr")));
+
+		// 从第2条json组开始才是药品数据
+		for (int i = 1; i < jsonarray.size(); i++) {
+			JSONObject jsonobject = (JSONObject) jsonarray.get(i);
+			PrescribeCell cell = new PrescribeCell();
+
+			cell.setGroupNo(1);
+			// 药品的id为空应该去数据查询药品是否存在
+			String[] basicdrug = jsonobject.getString("drugname").split("_");
+
+			if (isNum(basicdrug[0])) {
+				BasicDrugCheck a = this.basicDrugCheckService.get(Long
+						.parseLong(basicdrug[0]));
+				cell.setBasicDrugCheck(a);
+				if (basicdrug.length > 1) {
+					cell.setDrugName(basicdrug[1]);
+				} else {
+					cell.setDrugName(basicdrug[0]);
+				}
+
+			} else {
+				if (basicdrug[0].equals("")) {
+					cell.setBasicDrugCheck(null);
+				} else {
+					BasicDrugCheck b = this.basicDrugCheckService
+							.findByName(basicdrug[0]);
+					if (b != null) {
+						cell.setBasicDrugCheck(b);
+					} else {
+						cell.setBasicDrugCheck(null);
+					}
+				}
+				cell.setDrugName(basicdrug[0]);
+			}
+			cell.setAdviceType(AdviceTypeEnum.TEMP_ADVICE);
+			// 用法如果为空应该去数据查询用法是否存在
+			String usage = jsonobject.getString("usage");
+			if (isNum(usage)) {
+				Usage u = this.usageService.get(Long.parseLong(usage));
+				cell.setUsage(u);
+			} else {
+				if (usage.equals("")) {
+					cell.setUsage(null);
+				} else {
+					Usage u = this.usageService.findByName(usage);
+					if (u != null) {
+						cell.setUsage(u);
+					} else {
+						cell.setUsage(null);
+					}
+				}
+			}
+			cell.setDaynum(null); // 天数
+			String frequery = jsonobject.getString("frequery");
+			// 频次
+			if (isNum(frequery)) {
+				Frequency f = this.frequencyService.get(Long
+						.parseLong(frequery));
+				cell.setFrequency(f);
+			} else {
+				if (frequery.equals("")) {
+					cell.setFrequency(null);
+				} else {
+					Frequency f = this.frequencyService.findByName(frequery);
+					if (f != null) {
+						cell.setFrequency(f);
+					} else {
+						cell.setFrequency(null);
+					}
+				}
+			}
+			// 如果用量与单位为手工输入则把单位分出来
+			String dosage = jsonobject.getString("dosage");
+			if (!StringUtils.isNullOrBlank(dosage)) {
+				if (isNum(dosage)) {
+					cell.setDosage(Double.parseDouble(dosage));
+				} else {
+					String unit = splitNotNumber(dosage);
+					String d = dosage.replace(unit, "");
+					if (isNum(d)) {
+						cell.setDosage(Double.parseDouble(d));
+						cell.setUnit(unit);
+					} else {
+						cell.setDosage(0);
+					}
+
+				}
+			} else {
+				cell.setDosage(0);
+			}
+			// 添加
+			cellList.add(cell);
+		}
+
+		/*
+		 * patientInfo.setBirthday(DateUtils.toDate("1973-06-13",
+		 * DateUtils.YEAR_MONTH_DAY));
+		 * patientInfo.setCureType(CureTypeEnum.OUT_PATIENT);
+		 * patientInfo.setGender(GenderEnum.FEMALE);
+		 * patientInfo.setGestateTime(3L); patientInfo.setName("������");
+		 * patientInfo.setSerialNo("12345"); patientInfo.setWeight(56);
+		 * patientInfo.setHeight(167);
+		 */
+
+		PrescribeBasicInfo pBasicInfo = new PrescribeBasicInfo();
+
+		pBasicInfo.setCreateTime(DateUtils.now());
+		pBasicInfo.setDiseaseCode("A01.101");
+		pBasicInfo.setDiseaseName("流行性感冒");
+		pBasicInfo.setDivisionCode("dept-2046");
+		pBasicInfo.setDivisionName("外科");
+		pBasicInfo.setMedicalerName("某医生");
+		pBasicInfo.setMedicalerNo("m-3721");
+		pBasicInfo.setMedicalerTitle(TitleEnum.MainMedicaler);
+		pBasicInfo.setPrescribeNo("1314");
+		pBasicInfo.setTotalAmount(BigDecimal.valueOf(999.98));
+		JsonArray array = new JsonArray();
+		VerifyReport v = prescriptionVerifier.verify(patientInfo, pBasicInfo,
+				cellList, "");
+		if (v != null) {
+			if (CollectionUtils.isNotEmpty(v.getOriginReport())) {
+				for (ReportDetail report : v.getOriginReport()) {
+					JsonObject obj = new JsonObject();
+					obj.addProperty("type", report.getRuleType().getText()
+							+ "：");
+					obj.addProperty("grade", report.getGrade().getText());
+					obj.addProperty("result", report.getRemark());
+					array.add(obj);
+				}
+				PrintWriter out = null;
+				response.setContentType("applicaiton/json;charset=UTF-8");
+				out = response.getWriter();
+				out.print(array);
+			} else {
+				JsonObject obj = new JsonObject();
+				obj.addProperty("type", "");
+				obj.addProperty("grade", "提示");
+				obj.addProperty("result", "未发现配伍禁忌和重复用药!");
+				array.add(obj);
+				PrintWriter out = null;
+				response.setContentType("applicaiton/json;charset=UTF-8");
+				out = response.getWriter();
+				out.print(array);
+			}
+		}
+
+	}
+
+	// 取字条串中的数据，返回第一个数字
+	public static String getNumbers(String content) {
+		Pattern pattern = Pattern.compile("\\d+");
+		Matcher matcher = pattern.matcher(content);
+		while (matcher.find()) {
+			return matcher.group(0);
+		}
+		return "";
+	}
+
+	// 取字符串最后面的非数字字符串
+	public static String splitNotNumber(String content) {
+		Pattern pattern = Pattern.compile("\\D+");
+		StringBuilder s = new StringBuilder(content);
+		Matcher matcher = pattern.matcher(s.reverse());
+		while (matcher.find()) {
+			StringBuilder st = new StringBuilder(matcher.group(0));
+			return st.reverse().toString();
+		}
+		return "";
+	}
+
+	public static void main(String[] args) {
+		System.err.println(splitNotNumber("12.3slb"));
+		System.err.println(isNum("12.334"));
+	}
+
+	@RequestMapping("updatedrugrelationship")
+	@ResponseBody
+	public void updatedrugrelationship(String datas,
+			HttpServletRequest request, HttpServletResponse response)
+			throws IOException {
+		List<BasicDrugRelationship> list = bRelationshipService.findAll();
+		for (int i = 0; i < list.size(); i++) {
+			BasicDrugRelationship b = new BasicDrugRelationship();
+			BasicDrugCheck s = new BasicDrugCheck();
+			b = list.get(i);
+			s = basicDrugCheckService.findByName(b.getProductName());
+			b.setBasicDrugCheck(s);
+			b.setCommodityNameSymbol(StringManager.getFirstPinYin(b
+					.getCommodityName()));
+			b.setProductNameSymbol(StringManager.getFirstPinYin(b
+					.getProductName()));
+			bRelationshipService.update(b);
+		}
+		JsonArray array = new JsonArray();
+		JsonObject obj = new JsonObject();
+		obj.addProperty("type", "");
+		obj.addProperty("grade", "提示");
+		obj.addProperty("result", "更新完成!");
+		array.add(obj);
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		out.print(array);
+
+	}
+	
+	
+	@RequestMapping(method = RequestMethod.POST, value = "/drugtext")
+	@ResponseBody
+	public void drugtext(HttpServletRequest request,
+			HttpServletResponse response) throws IOException,
+			TokenStreamException, RecognitionException, MapperException,
+			CheckException {
+		
+		PrintWriter out = null;
+		response.setContentType("applicaiton/json;charset=UTF-8");
+		out = response.getWriter();
+		JSONObject outjson = new JSONObject();
+		try {
+			BufferedReader in = new BufferedReader(new InputStreamReader(
+					request.getInputStream(), "UTF-8"));
+			JSONObject baseobject = JSONObject.fromObject(in.readLine());
+			Integer pageNum = baseobject.getInt("pageNum");
+			Integer pagesize = 15;
+			List<User> l = this.userService.findDoctor(pageNum, pagesize);
+			String userId =baseobject.getString("userId");
+			JSONArray jsonArray = new JSONArray();
+			for (User u : l) {
+				JSONObject json = new JSONObject();
+				if(StringUtils.isNullOrBlank(userId)){
+					json.put("status", "0");
+				}else{
+					
+				int count=	ownDoctorService.countByProperty("user", new User(Long.parseLong(userId)));
+					if(count>0){
+						json.put("status", "1");
+					}else{
+						json.put("status", "0");
+					}
+				}
+				
+				json.put("doctorId", u.getUserId());
+				json.put("doctorName", u.getUserName());
+				json.put("professional", u.getUserType());
+				json.put("description", u.getInrtoduction());
+				json.put("img", u.getImg());
+				jsonArray.add(json);
+			}
+			outjson.put("code", "1000");
+			outjson.put("msg", "success");
+			outjson.put("data", jsonArray);
+		} catch (Exception e) {
+			outjson.put("code", "1001");
+			outjson.put("msg", "加载失败");
+			outjson.put("data", "");
+		}
+		out.print(outjson);
+		}
+	
+	
+
+}
